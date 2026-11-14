@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETH Payment</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+
+    <style>
+        body {
+            background: #10121a;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: #1c2030;
+            padding: 35px;
+            border-radius: 16px;
+            width: min(340px, calc(100% - 70px));
+            text-align: center;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            background: #627eea;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+
+        button:hover {
+            background: #506bd0;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-size: 13px;
+            overflow-wrap: anywhere;
+        }
+
+        .details {
+            background: #292e40;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 13px;
+            text-align: left;
+        }
+
+        a {
+            color: #8da5ff;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+    <h2>ETH Payment</h2>
+    <p>Connect your wallet to make a Sepolia testnet payment.</p>
+
+    <div class="details">
+        <p>Network: Sepolia Testnet</p>
+        <p>Amount: <strong>0.2 ETH</strong></p>
+        <p>Recipient:</p>
+        <p id="recipient">0xE2C262A4e03C36A36783C0ecF04984E612FE3BBe</p>
+    </div>
+
+    <button id="connectButton" onclick="connectWallet()">Connect Wallet</button>
+    <button id="payButton" onclick="sendPayment()" disabled>Send 0.2 ETH</button>
+    <div id="status" aria-live="polite">Wallet not connected</div>
+</div>
+
+<script>
+    // Public recipient address shown to the user before wallet confirmation.
+    const RECIPIENT = "0xE2C262A4e03C36A36783C0ecF04984E612FE3BBe";
+    const SEPOLIA_CHAIN_ID = 11155111;
+
+    let provider;
+    let signer;
+
+    async function connectWallet() {
+        try {
+            if (!window.ethereum) {
+                throw new Error("Please install a compatible wallet, such as MetaMask.");
+            }
+
+            provider = new ethers.BrowserProvider(window.ethereum);
+            await provider.send("eth_requestAccounts", []);
+
+            const network = await provider.getNetwork();
+            if (Number(network.chainId) !== SEPOLIA_CHAIN_ID) {
+                throw new Error("Please switch your wallet to the Sepolia testnet.");
+            }
+
+            signer = await provider.getSigner();
+            const address = await signer.getAddress();
+
+            document.getElementById("connectButton").textContent =
+                address.slice(0, 6) + "..." + address.slice(-4);
+            document.getElementById("payButton").disabled = false;
+            document.getElementById("status").textContent =
+                "Wallet connected. Review the recipient and amount before confirming.";
+        } catch (error) {
+            document.getElementById("status").textContent =
+                error.shortMessage || error.message;
+        }
+    }
+
+    async function sendPayment() {
+        const payButton = document.getElementById("payButton");
+
+        try {
+            if (!signer || !provider) {
+                throw new Error("Connect your wallet first.");
+            }
+
+            if (!ethers.isAddress(RECIPIENT) || RECIPIENT === ethers.ZeroAddress) {
+                throw new Error("The configured recipient address is invalid.");
+            }
+
+            const network = await provider.getNetwork();
+            if (Number(network.chainId) !== SEPOLIA_CHAIN_ID) {
+                throw new Error("Please switch your wallet to the Sepolia testnet.");
+            }
+
+            const confirmed = window.confirm(
+                "You are about to request a transfer of 0.2 Sepolia ETH to:\n\n" +
+                RECIPIENT +
+                "\n\nYour wallet will show the transaction for your review. Continue?"
+            );
+
+            if (!confirmed) {
+                document.getElementById("status").textContent =
+                    "Transaction cancelled before wallet submission.";
+                return;
+            }
+
+            payButton.disabled = true;
+            document.getElementById("status").textContent =
+                "Waiting for you to review and approve the transaction in your wallet...";
+
+            const transaction = await signer.sendTransaction({
+                to: RECIPIENT,
+                value: ethers.parseEther("0.2")
+            });
+
+            document.getElementById("status").innerHTML =
+                "Transaction submitted. It is not yet confirmed.<br><br>" +
+                "Transaction hash:<br>" +
+                "<code>" + transaction.hash + "</code><br><br>" +
+                '<a target="_blank" rel="noopener noreferrer" href="https://sepolia.etherscan.io/tx/' +
+                encodeURIComponent(transaction.hash) + '">View on Sepolia Etherscan</a>';
+
+            const receipt = await transaction.wait();
+            document.getElementById("status").innerHTML +=
+                receipt && receipt.status === 1
+                    ? "<br><br>Transaction confirmed successfully."
+                    : "<br><br>Transaction was not successful.";
+        } catch (error) {
+            document.getElementById("status").textContent =
+                error.shortMessage || error.message || "Transaction failed.";
+        } finally {
+            payButton.disabled = !signer;
+        }
+    }
+
+    if (window.ethereum) {
+        window.ethereum.on?.("chainChanged", () => window.location.reload());
+        window.ethereum.on?.("accountsChanged", () => window.location.reload());
+    }
+</script>
+</body>
+</html>
